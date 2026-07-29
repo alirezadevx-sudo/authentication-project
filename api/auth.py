@@ -35,5 +35,4 @@ async def create_user(db: DB_dependency, user_req: CreateUserReq):
         await db.rollback()
         raise ExeptionErr(msg=str(ex))
 
-    
-    
+

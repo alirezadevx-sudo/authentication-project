@@ -7,5 +7,8 @@ wheels/
 *.egg-info
 .env
 # Virtual environments
-.venv
+.venv/
+__pycache__/
+*.pyc
+.env
 .freebuff

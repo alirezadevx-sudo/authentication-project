@@ -63,18 +63,24 @@ async def login_user(
 
         refresh_id = uuid.uuid4()
 
+        print("refresh_id: ", refresh_id)
+
         refresh_token = create_refresh_token(
             {"refresh_id": str(refresh_id), "type": "refresh", "user_id": user.id}
         )
 
-        token_model = Session(
+        print("refresh_token: ", refresh_token)
+
+        session_model = Session(
             id=refresh_id,
             user_id=user.id,
             refresh_token_hash=hash_token(refresh_token),
             expires_at=datetime.now(timezone.utc) + timedelta(days=7)
         )
 
-        db.add(token_model)
+        print("refresh_model: ", session_model)
+
+        db.add(session_model)
         await db.commit()
 
         response = JSONResponse(
@@ -85,9 +91,7 @@ async def login_user(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,
-            samesite='lax',
-            max_age= 60 * 60 * 24 * 7
+            secure=False
         )
 
         return response
@@ -100,9 +104,9 @@ async def login_user(
         raise ExeptionErr(msg=str(ex))
 
 @router.post("/refresh", status_code=status.HTTP_200_OK, response_model=Token)
-async def refresh_token(db: DB_dependency, seesion: Annotated[Session, Depends(get_current_user_refresh_token)]):
+async def refresh_token(db: DB_dependency, session: Annotated[Session, Depends(get_current_user_refresh_token)]):
     try:
-        user = await fetch_user_id(db, seesion.user_id)
+        user = await fetch_user_id(db, session.user_id)
         if user is None:
             raise NotFoundErr(msg='User Not Found!')
 
@@ -111,7 +115,9 @@ async def refresh_token(db: DB_dependency, seesion: Annotated[Session, Depends(g
         access_token = create_access_token({'sub': str(user.id), 'role': user.role, "type": "bearer"})
         new_refresh_token = create_refresh_token({'refresh_id': str(refresh_id), 'type': 'refresh', 'user_id': user.id})
 
-        old_session = await fetch_session(db, user.id, seesion.id)
+        old_session = await fetch_session(db, user.id, session.id)
+        if old_session is None:
+            raise NotFoundErr(msg='Session Not Found!')
 
         session_model = Session(
             id=refresh_id,
@@ -120,8 +126,9 @@ async def refresh_token(db: DB_dependency, seesion: Annotated[Session, Depends(g
             expires_at=datetime.now(timezone.utc) + timedelta(days=7)
         )
 
+        old_session.revoked = True
+        old_session.last_refreshed_at = datetime.now(timezone.utc)
 
-        await db.delete(old_session)
         db.add(session_model)
         await db.commit()
         await db.refresh(session_model)
@@ -134,9 +141,7 @@ async def refresh_token(db: DB_dependency, seesion: Annotated[Session, Depends(g
             key='refresh_token',
             value=new_refresh_token,
             httponly=True,
-            secure=False,
-            samesite='lax',
-            max_age= 60 * 60 * 24 * 7
+            secure=False
         )
 
         return response

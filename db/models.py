@@ -16,6 +16,7 @@ class Users(Base):
     email: Mapped[str] = mapped_column(String(250), nullable=False, unique=True)
     role: Mapped[str] = mapped_column(default="user")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    email_is_verified: Mapped[bool] = mapped_column(nullable=False, default=False)
     sessions: Mapped[list["Session"]] = relationship(
         "Session", back_populates="user", cascade="all, delete-orphan"
     )
@@ -26,7 +27,7 @@ class Session(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4, index=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), nullable=False, index=True
+        ForeignKey("users.id", ondelete='CASCADE'), nullable=False, index=True
     )
     refresh_token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     last_refreshed_at: Mapped[Optional[datetime]] = mapped_column(

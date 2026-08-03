@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from services.email_service import send_email
 import uuid
 from fastapi.responses import JSONResponse
-from core.jwt import create_access_token, create_refresh_token, get_current_user_refresh_token
-from fastapi import APIRouter, status, Depends
+from core.jwt import create_access_token, create_refresh_token, get_current_user_refresh_token, create_resend_email_token
+from fastapi import APIRouter, status, Depends, BackgroundTasks
 from typing import Annotated
 from db.models import Users, Session
 from db.database import DB_dependency
@@ -18,7 +19,7 @@ router = APIRouter(tags=["auth"], prefix="/api/v1/auth")
 @router.post(
     "/signin", status_code=status.HTTP_201_CREATED, response_model=CreateUserRes
 )
-async def create_user(db: DB_dependency, user_req: CreateUserReq):
+async def create_user(db: DB_dependency, user_req: CreateUserReq, background_tasks: BackgroundTasks):
     try:
         username_exists = await fetch_user_username(db, user_req.username)
         if username_exists:
@@ -30,7 +31,12 @@ async def create_user(db: DB_dependency, user_req: CreateUserReq):
 
         user_date = user_req.model_dump()
         user_date["password"] = hash_password(user_date["password"])
-        user_model = Users(**user_date)
+        user_model = Users(**user_date, email_is_verified=False)
+
+        email_verification_token = create_resend_email_token({'email': user_model.email, 'type': 'resend'})
+
+        background_tasks.add_task(send_email, user_model.email, email_verification_token)
+
 
         db.add(user_model)
         await db.commit()
@@ -56,6 +62,9 @@ async def login_user(
 
         if not verify_password(form_data.password, user.password):
             raise UnAuthorizedErr(msg="Invalid Credentioals")
+
+        if not user.email_is_verified:
+            raise UnAuthorizedErr(msg='Please verify your email')
 
         access_token = create_access_token(
             {"sub": str(user.id), "type": "bearer", "role": user.role}
@@ -90,6 +99,7 @@ async def login_user(
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
+            path='/',
             httponly=True,
             secure=False
         )
@@ -97,10 +107,13 @@ async def login_user(
         return response
 
     except NotFoundErr:
+        await db.rollback()
         raise
     except UnAuthorizedErr:
+        await db.rollback()
         raise
     except Exception as ex:
+        await db.rollback()
         raise ExeptionErr(msg=str(ex))
 
 @router.post("/refresh", status_code=status.HTTP_200_OK, response_model=Token)
@@ -140,6 +153,7 @@ async def refresh_token(db: DB_dependency, session: Annotated[Session, Depends(g
         response.set_cookie(
             key='refresh_token',
             value=new_refresh_token,
+            path='/',
             httponly=True,
             secure=False
         )
@@ -147,8 +161,35 @@ async def refresh_token(db: DB_dependency, session: Annotated[Session, Depends(g
         return response
 
     except NotFoundErr:
+        await db.rollback()
         raise
     except Exception as ex:
-        raise ExeptionErr(str(ex))
+        await db.rollback()
+        raise ExeptionErr(msg=f"Refresh token error: {str(ex)}")
 
 
+@router.post('/logout', status_code=status.HTTP_204_NO_CONTENT)
+async def logout_user(db: DB_dependency, session: Annotated[Session, Depends(get_current_user_refresh_token)]):
+    try:
+        session.revoked = True
+        session.last_refreshed_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        response = JSONResponse(
+            content={
+                'msg': 'Loged out successfully!'
+            }
+        )
+
+        response.delete_cookie(
+            path='/',
+            key='refresh_token',
+            secure=False,
+            httponly=True
+        )
+
+        return response
+
+    except Exception as ex:
+        await db.rollback()
+        raise ExeptionErr(msg=f"logout Error: {str(ex)}")

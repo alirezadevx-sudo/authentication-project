@@ -1,10 +1,9 @@
 from core.security import verify_token
 from uuid import UUID
-from fastapi import Cookie
+from fastapi import Cookie, Depends, Query
 from schemes.exeptions import NotFoundErr, UnAuthorizedErr
 from db.models import Users, Session
-from core.crud import fetch_user_id, fetch_session
-from fastapi import Depends
+from core.crud import fetch_user_id, fetch_session, fetch_user_email
 from typing import Annotated
 from db.database import DB_dependency
 from datetime import datetime, timezone, timedelta
@@ -24,6 +23,11 @@ def create_refresh_token(payload: dict) -> str:
     token = payload.copy()
     token.update({'exp': datetime.now(timezone.utc) + timedelta(days=7)})
     return jwt.encode(token, core_settings.SECRET_KEY, algorithm=core_settings.ALGORITHM)
+
+def create_resend_email_token(payload: dict) -> str:
+    token = payload.copy()
+    token.update({'exp': datetime.now(timezone.utc) + timedelta(hours=1)})
+    return jwt.encode(token, key=core_settings.SECRET_KEY, algorithm=core_settings.ALGORITHM)
 
 async def get_current_user_access_token(db: DB_dependency, token: Annotated[str, Depends(oauth2_sheme)]):
     try:
@@ -84,5 +88,19 @@ async def get_current_user_refresh_token(db: DB_dependency, refresh_token: Annot
         raise UnAuthorizedErr(msg='Refresh token mismatch or session revoked')
 
     return session
+
+async def verify_resend_email(db: DB_dependency, token: str = Query(...)):
+    payload = jwt.decode(token, key=core_settings.SECRET_KEY, algorithms=[core_settings.ALGORITHM])
+
+    if payload.get("type") != 'resend':
+        raise InvalidTokenError()
+
+    email: str = payload.get('email')
+
+    user = await fetch_user_email(db, email=email)
+    if user is None:
+        raise NotFoundErr(msg="User Not Found!")
+
+    return user
 
 CurrentUser = Annotated[Users, Depends(get_current_user_access_token)]

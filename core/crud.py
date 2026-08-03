@@ -20,7 +20,6 @@ async def fetch_user_id(db: DB_dependency, id: int):
     return result.scalar_one_or_none()
 
 
-# fetch_session
 async def fetch_session(db: DB_dependency, user_id: int, refresh_id: UUID):
     result = await db.execute(
         select(Session).where(

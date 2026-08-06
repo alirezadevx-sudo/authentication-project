@@ -4,7 +4,6 @@ from services.service_setting import service_setting
 
 async def send_email(email: str, token: str):
     try:
-        logger.info(f"📧 Attempting to send email to: {email}")
         
         resend.api_key = service_setting.RESEND_API_KEY
         

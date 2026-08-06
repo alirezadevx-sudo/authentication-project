@@ -1,5 +1,8 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Annotated
+from db.models import Users, PasswordReset
+from fastapi import Depends
+from core.password_reset import verify_password_reset_token
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 class CreateUserReq(BaseModel):
@@ -20,3 +23,10 @@ class CreateUserRes(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = 'bearer'
+
+class ForgotPasswordReq(BaseModel):
+    email: EmailStr = Field(..., min_length=3, max_length=250, examples=['alrezaqurani@gmail.com'])
+
+class PasswordResetReq(BaseModel):
+    password: str = Field(..., min_length=4)
+

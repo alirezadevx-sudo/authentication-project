@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 
 
-class BasRequestErr(HTTPException):
+class BadRequestErr(HTTPException):
     def __init__(self, msg: str):
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
@@ -19,3 +19,7 @@ class NotFoundErr(HTTPException):
 class UnAuthorizedErr(HTTPException):
     def __init__(self, msg: str):
         super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=msg)
+
+class AccountLockedErr(HTTPException):
+    def __init__(self, msg: str):
+        super().__init__(status_code=status.HTTP_423_LOCKED, detail=msg)
